@@ -154,7 +154,7 @@
 
         const loader = new FontLoader();
         loader.load('https://raw.githubusercontent.com/vainsan/assets/main/FFF_Galaxy_Regular.json', function (font) {
-          const textGeometry = new TextGeometry('CODEPEN.IO', {
+          const textGeometry = new TextGeometry('SHULIN.ZHANF', {
             font: font,
             size: 2,
             height: .3,
@@ -215,7 +215,7 @@
         scene.add(particles);
 
         const composer = new EffectComposer(renderer);
-        const renderPass = new RenderPass(scene, camera);
+        const renderPass = new RenderPass(scene, camera);open
         composer.addPass(renderPass);
 
         const glitchPass = new GlitchPass();
