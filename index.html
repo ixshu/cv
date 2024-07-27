@@ -1,0 +1,300 @@
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>three.js + GSAP</title>
+    <style>
+      body { margin: 0; overflow: hidden; user-select: none;}
+      canvas { display: block; }
+    </style>
+  </head>
+  <body>
+    <script type="module">
+      import * as THREE from 'https://cdn.skypack.dev/three@0.136.0/build/three.module.js';
+      import { OrbitControls } from 'https://cdn.skypack.dev/three@0.136.0/examples/jsm/controls/OrbitControls.js';
+      import { OBJLoader } from 'https://cdn.skypack.dev/three@0.136.0/examples/jsm/loaders/OBJLoader.js';
+      import { FontLoader } from 'https://cdn.skypack.dev/three@0.136.0/examples/jsm/loaders/FontLoader.js';
+      import { TextGeometry } from 'https://cdn.skypack.dev/three@0.136.0/examples/jsm/geometries/TextGeometry.js';
+      import { EffectComposer } from 'https://cdn.skypack.dev/three@0.136.0/examples/jsm/postprocessing/EffectComposer.js';
+      import { RenderPass } from 'https://cdn.skypack.dev/three@0.136.0/examples/jsm/postprocessing/RenderPass.js';
+      import { UnrealBloomPass } from 'https://cdn.skypack.dev/three@0.136.0/examples/jsm/postprocessing/UnrealBloomPass.js';
+      import { GlitchPass } from 'https://cdn.skypack.dev/three@0.136.0/examples/jsm/postprocessing/GlitchPass.js';
+      import { ShaderPass } from 'https://cdn.skypack.dev/three@0.136.0/examples/jsm/postprocessing/ShaderPass.js';
+      import { gsap } from 'https://cdn.skypack.dev/gsap@3.9.1';
+
+      const scene = new THREE.Scene();
+      scene.fog = new THREE.Fog(0x000000, 10, 85);
+      const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      document.body.appendChild(renderer.domElement);
+      camera.position.set(0, 30, 0);
+      gsap.to(camera.position, {
+        duration: 3,
+        x: Math.random() * 7 + 1,
+        y: 0,
+        z: 70,
+        ease: 'circ.inOut'
+      });
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+
+      const floorGeometry = new THREE.PlaneGeometry(100, 100, 100, 100);
+      const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00, wireframe: true, transparent:true, opacity:0.2 });
+      const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+      floor.rotation.x = -Math.PI / 2;
+      scene.add(floor);
+
+      const floorBoxGeometry = new THREE.BoxGeometry(100, 100, 100);
+      const floorBoxMaterial = new THREE.MeshStandardMaterial({ color: 0x00FF00, wireframe: true, side: THREE.DoubleSide });
+      const floorBox = new THREE.Mesh(floorBoxGeometry, floorBoxMaterial);
+      floorBox.position.set(0, 0, 0);
+      scene.add(floorBox);
+
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+      scene.add(ambientLight);
+      const pointLight = new THREE.PointLight(0xffffff, 1);
+      pointLight.position.set(10, 10, 10);
+      scene.add(pointLight);
+
+      const loaderObj = new OBJLoader();
+      loaderObj.load('https://raw.githubusercontent.com/vainsan/assets/main/obj/logo_vainsan.obj', function (object) {
+
+        /*  
+        const shaderMaterial = new THREE.ShaderMaterial({
+          vertexShader: `
+            varying vec3 vNormal;
+            void main() {
+              vNormal = normalize(normalMatrix * normal);
+              gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+          `,
+          fragmentShader: `
+            varying vec3 vNormal;
+            void main() {
+              float intensity = dot(vNormal, vec3(0.0, 0.0, 1.0));
+              gl_FragColor = vec4(0.0, intensity, 0.0, 1.0);
+            }
+          `,
+          side: THREE.DoubleSide
+        });
+        */
+        const vertexShader = `
+          varying vec3 vPosition;
+
+          void main() {
+              vPosition = position;
+              gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+      `;
+
+        const fragmentShader = `
+          uniform vec3 color;
+          uniform float opacity;
+          uniform float thickness;
+          uniform float dashSize;
+          uniform float gapSize;
+
+          varying vec3 vPosition;
+
+          void main() {
+              float len = length(vPosition.xy); // Simple distance calculation for dashes
+              float dashFactor = mod(len, dashSize + gapSize);
+              if (dashFactor > dashSize) {
+                  discard; // Skip the fragment to create gaps
+              }
+
+              float edgeThickness = thickness / 100.0;
+              if (mod(vPosition.x + vPosition.y + vPosition.z, 1.0) < edgeThickness) {
+                  gl_FragColor = vec4(color, opacity);
+              } else {
+                  discard;
+              }
+          }
+      `;
+
+        const uniforms = {
+          color: { value: new THREE.Color(0xFFFF00) },
+          opacity: { value: 0.3 },
+          thickness: { value: 3.0 },
+          dashSize: { value: 0.4 },
+          gapSize: { value: 0.8 },
+        };
+
+        const OBJuniforms = {
+          color: { value: new THREE.Color(0x00FF00) },
+          opacity: { value: 1.0 },
+          thickness: { value: 6.0 },
+          dashSize: { value: 0.0 },
+          gapSize: { value: 0.0 },
+        };
+
+        const shaderMaterial = new THREE.ShaderMaterial({
+          uniforms: uniforms,
+          vertexShader: vertexShader,
+          fragmentShader: fragmentShader,
+          transparent: true, 
+        });
+        const OBJshaderMaterial = new THREE.ShaderMaterial({
+          uniforms: OBJuniforms,
+          vertexShader: vertexShader,
+          fragmentShader: fragmentShader,
+          transparent: true, 
+        });
+
+        object.traverse(function (child) {
+          if (child.isMesh) {
+            child.material = OBJshaderMaterial;
+            // child.material.wireframe = true;
+          }
+        });
+        object.scale.set( 1, 1, .4);
+        scene.add(object);
+
+        const loader = new FontLoader();
+        loader.load('https://raw.githubusercontent.com/vainsan/assets/main/FFF_Galaxy_Regular.json', function (font) {
+          const textGeometry = new TextGeometry('CODEPEN.IO', {
+            font: font,
+            size: 2,
+            height: .3,
+            curveSegments: 2,
+            bevelEnabled: true,
+            bevelThickness: 0.0,
+            bevelSize: 0.0,
+            bevelOffset: 0,
+            bevelSegments: 0
+          });
+
+          const txtDim = 2;
+          const material = new THREE.MeshBasicMaterial({ color: 0xffff00, wireframe: false });
+          const textMesh = new THREE.Mesh(textGeometry, material);
+          textMesh.position.set(0, 0, 0);
+
+          const groupText = new THREE.Group();
+          groupText.scale.set(txtDim, txtDim, txtDim);
+          groupText.position.set(-txtDim * 12, 4, 18);
+          groupText.add(textMesh);
+          scene.add(groupText);
+        });
+
+        const cubes = [];
+        const cubeGeometry = new THREE.BoxGeometry(12,4,4);
+        const cubeMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
+
+        for (let i = 0; i < 500; i++) {
+          const cube = new THREE.Mesh(cubeGeometry, shaderMaterial);
+          cube.position.x = Math.random() * 100 - 50;
+          cube.position.y = 0;
+          cube.position.z = Math.random() * 100 - 50;
+          cube.scale.set(0.4, Math.random() * 1 - 5, 0.4);
+          scene.add(cube);
+          cubes.push(cube);
+        }
+
+        const particlesGeometry = new THREE.BufferGeometry();
+        const particlesCount = 5000;
+        const positions = new Float32Array(particlesCount * 3);
+
+        for (let i = 0; i < particlesCount; i++) {
+          positions[i * 3] = Math.random() * 100 - 50;
+          positions[i * 3 + 1] = Math.random() * 100 - 50;
+          positions[i * 3 + 2] = Math.random() * 100 - 50;
+        }
+
+        particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+        const particlesMaterial = new THREE.PointsMaterial({
+          color: 0x00ff00,
+          size: 0.05,
+          transparent: true,
+          blending: THREE.AdditiveBlending
+        });
+
+        const particles = new THREE.Points(particlesGeometry, particlesMaterial);
+        scene.add(particles);
+
+        const composer = new EffectComposer(renderer);
+        const renderPass = new RenderPass(scene, camera);
+        composer.addPass(renderPass);
+
+        const glitchPass = new GlitchPass();
+        glitchPass.goWild = false;
+        glitchPass.SPORADIC = true;
+        glitchPass.delay = [1.5, 9.5];
+        glitchPass.duration = [0.05, 0.25];
+        glitchPass.blending = THREE.ScreenBlending;
+        composer.addPass(glitchPass);
+
+        const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+        bloomPass.threshold = 0.21;
+        bloomPass.strength = 0.8;
+        bloomPass.radius = 1.05;
+        composer.addPass(bloomPass);
+
+        const scanLineShader = {
+          blending: THREE.AdditiveBlending,
+          uniforms: {
+            "tDiffuse": { value: null },
+            "time": { value: 0.0 },
+            "lineHeight": { value: 4.0 },
+            "lineSpacing": { value: 2.0 },
+            "opacity": { value: 0.15 }
+          },
+          vertexShader: `
+            varying vec2 vUv;
+            void main() {
+              vUv = uv;
+              gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+          `,
+          fragmentShader: `
+            uniform sampler2D tDiffuse;
+            uniform float time;
+            uniform float lineHeight;
+            uniform float lineSpacing;
+            uniform float opacity;
+            varying vec2 vUv;
+
+            void main() {
+              vec4 color = texture2D(tDiffuse, vUv);
+              float scanline = step(lineSpacing, mod(gl_FragCoord.y, lineHeight)) * opacity;
+              color.rgb += scanline;
+              gl_FragColor = color;
+            }
+          `
+        };
+
+        const scanLinePass = new ShaderPass(scanLineShader);
+        composer.addPass(scanLinePass);
+
+        gsap.to(cubes.map(cube => cube.scale), {
+          duration: 1,
+          y: Math.random() * 7 + 1,
+          repeat: -1,
+          yoyo: true,
+          stagger: 0.01,
+          ease: 'power1.inOut'
+        });
+
+        window.addEventListener('resize', onWindowResize, false);
+
+        function onWindowResize() {
+          camera.aspect = window.innerWidth / window.innerHeight;
+          camera.updateProjectionMatrix();
+          renderer.setSize(window.innerWidth, window.innerHeight);
+          composer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+          requestAnimationFrame(animate);
+          controls.update();
+          composer.render();
+        }
+
+        animate();
+      });
+    </script>
+    <script src="https://codepen.io/vainsan/pen/eYwmgap.js"></script>
+  </body>
+</html>
